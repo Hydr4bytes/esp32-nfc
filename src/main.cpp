@@ -1,5 +1,9 @@
 #include <Arduino.h>
 
+#include "mbedtls/md.h"
+#include "mbedtls/pem.h"
+#include "mbedtls/pk.h"
+
 #if 1
 #include <SPI.h>
 #include <PN532_SPI.h>
@@ -19,10 +23,38 @@ PN532 nfc(pn532hsu);
 #include <PN532.h>
 #endif
 
+mbedtls_pk_context pk;
+unsigned char hash[32];
+unsigned char buf[MBEDTLS_MPI_MAX_SIZE];
+
+//const unsigned char pubKey[] = "";
+
+unsigned long getChallenge()
+{
+	time_t now;
+	struct tm timeinfo;
+	if (!getLocalTime(&timeinfo))
+	{
+		Serial.println("Failed to obtain time");
+		return (0);
+	}
+	time(&now);
+	return now;
+}
+
 void setup()
 {
 	Serial.begin(115200);
 	Serial.println("-------Peer to Peer HCE--------");
+
+	// mbedtls_pk_init(&pk);
+
+	// if(mbedtls_pk_parse_public_key(&pk, pubKey, sizeof(pubKey)) != 0)
+	// {
+	// 	Serial.print("Failed to parse RSA public key");
+	// 	while (1)
+	// 		; //halt
+	// }
 
 	nfc.begin();
 
@@ -90,6 +122,7 @@ void loop()
 			do
 			{
 				uint8_t apdu[] = "Hello from Arduino";
+				
 				uint8_t back[32];
 				uint8_t length = 32;
 
