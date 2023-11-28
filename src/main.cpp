@@ -27,34 +27,12 @@ mbedtls_pk_context pk;
 unsigned char hash[32];
 unsigned char buf[MBEDTLS_MPI_MAX_SIZE];
 
-//const unsigned char pubKey[] = "";
-
-unsigned long getChallenge()
-{
-	time_t now;
-	struct tm timeinfo;
-	if (!getLocalTime(&timeinfo))
-	{
-		Serial.println("Failed to obtain time");
-		return (0);
-	}
-	time(&now);
-	return now;
-}
+const char key[] = "AZXCVVBBN";
 
 void setup()
 {
 	Serial.begin(115200);
 	Serial.println("-------Peer to Peer HCE--------");
-
-	// mbedtls_pk_init(&pk);
-
-	// if(mbedtls_pk_parse_public_key(&pk, pubKey, sizeof(pubKey)) != 0)
-	// {
-	// 	Serial.print("Failed to parse RSA public key");
-	// 	while (1)
-	// 		; //halt
-	// }
 
 	nfc.begin();
 
@@ -62,8 +40,7 @@ void setup()
 	if (!versiondata)
 	{
 		Serial.print("Didn't find PN53x board");
-		while (1)
-			; // halt
+		while (1); // halt
 	}
 
 	// Got ok data, print it out!
@@ -113,7 +90,6 @@ void loop()
 
 		if (success)
 		{
-
 			Serial.print("responseLength: ");
 			Serial.println(responseLength);
 
@@ -121,31 +97,51 @@ void loop()
 
 			do
 			{
-				uint8_t apdu[] = "Hello from Arduino";
-				
-				uint8_t back[32];
-				uint8_t length = 32;
+				//uint8_t apdu[] = "Hello from Arduino";
+				//char apdu[32];
 
-				success = nfc.inDataExchange(apdu, sizeof(apdu), back, &length);
+				String challenge = String(millis());
+				Serial.print("Challenge: ");
+				Serial.println(challenge);
+
+				uint8_t back[128];
+				uint8_t length = 128;
+
+				success = nfc.inDataExchange((uint8_t*)challenge.c_str(), sizeof(uint8_t) * challenge.length(), back, &length);
 
 				if (success)
 				{
-
 					Serial.print("responseLength: ");
 					Serial.println(length);
 
 					nfc.PrintHexChar(back, length);
+					Serial.println();
+
+					String response = String((char*)back);
+					response = response.substring(0, length - 2);
+
+					Serial.println(response);
+					if(response == challenge + key) {
+						Serial.println(" Authenticated!");
+
+						uint8_t apdu[] = {0x90, 0x01};
+						uint8_t final_back[2];
+						uint8_t final_length = 2;
+
+						success = nfc.inDataExchange(apdu, sizeof(apdu), final_back, &final_length);
+						if(success) {
+							delay(2000);
+						}
+					}
 				}
 				else
 				{
-
 					Serial.println("Broken connection?");
 				}
 			} while (success);
 		}
 		else
 		{
-
 			Serial.println("Failed sending SELECT AID");
 		}
 	}
