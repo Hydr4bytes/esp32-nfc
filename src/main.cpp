@@ -1,9 +1,5 @@
 #include <Arduino.h>
 
-#include "mbedtls/md.h"
-#include "mbedtls/pem.h"
-#include "mbedtls/pk.h"
-
 #if 1
 #include <SPI.h>
 #include <PN532_SPI.h>
@@ -23,16 +19,89 @@ PN532 nfc(pn532hsu);
 #include <PN532.h>
 #endif
 
-mbedtls_pk_context pk;
-unsigned char hash[32];
-unsigned char buf[MBEDTLS_MPI_MAX_SIZE];
+#include <M5Stack.h>
 
-const char key[] = "AZXCVVBBN";
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <env.h>
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+
+TaskHandle_t mqttTaskHandle;
+TaskHandle_t displayTaskHandle;
+
+char mqtt_waterniveau = 0;
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+	Serial.print("Message arrived [");
+	Serial.print(topic);
+	Serial.print("] ");
+	for (int i = 0; i < length; i++) {
+		Serial.print((char)payload[i]);
+	}
+	Serial.println();
+
+	mqtt_waterniveau = (char)payload[0];
+}
+
+void mqttTaskLoop(void* parameter) {
+	Serial.print("MQTT running on core ");
+	Serial.println(xPortGetCoreID());
+
+	mqttClient.setServer(mqtt_url, mqtt_port);
+  	mqttClient.setCallback(mqttCallback);
+
+	while(1)
+	{
+		if(!mqttClient.connected()) {
+			if(mqttClient.connect("M5Stack", mqtt_username, mqtt_pass)) {
+				Serial.println("Connected to " + String(mqtt_url) + " as " + String(mqtt_username));
+				mqttClient.subscribe("onni/waterniveau");
+			}
+		}
+		mqttClient.loop();
+	}
+}
+
+void displayTask(void* parameter) {
+	Serial.print("Display running on core ");
+	Serial.println(xPortGetCoreID());
+
+	while(1) {
+		M5.Lcd.fillScreen(BLACK);
+
+		M5.Lcd.setCursor(10, 10);
+		M5.Lcd.setTextColor(WHITE);
+		M5.Lcd.setTextSize(1);
+
+		M5.Lcd.print("Waterniveau: ");
+		M5.Lcd.println(mqtt_waterniveau);
+
+		delay(20);
+	}
+}
 
 void setup()
 {
+	M5.begin();
+	M5.Power.begin();
+
 	Serial.begin(115200);
+	Serial.println();
 	Serial.println("-------Peer to Peer HCE--------");
+
+	WiFi.begin(wifi_ssid, wifi_pass);
+	Serial.print("Connecting to ");
+	Serial.println(wifi_ssid);
+	while (WiFi.status() != WL_CONNECTED) {
+		delay(500);
+		Serial.print(".");
+	}
+	Serial.println();
+	Serial.println("WiFi connected");
+	Serial.print("IP address: ");
+	Serial.println(WiFi.localIP());
 
 	nfc.begin();
 
@@ -51,13 +120,10 @@ void setup()
 	Serial.print('.');
 	Serial.println((versiondata >> 8) & 0xFF, DEC);
 
-	// Set the max number of retry attempts to read from a card
-	// This prevents us from waiting forever for a card, which is
-	// the default behaviour of the PN532.
-	// nfc.setPassiveActivationRetries(0xFF);
-
-	// configure board to read RFID tags
 	nfc.SAMConfig();
+
+	xTaskCreate(mqttTaskLoop, "MQTT", 10000, NULL, 0, &mqttTaskHandle);
+	xTaskCreate(displayTask, "Display", 10000, NULL, 0, &displayTaskHandle);
 }
 
 void loop()
@@ -122,7 +188,7 @@ void loop()
 
 					Serial.println(response);
 					if(response == challenge + key) {
-						Serial.println(" Authenticated!");
+						Serial.println("	Authenticated!");
 
 						uint8_t apdu[] = {0x90, 0x01};
 						uint8_t final_back[2];
@@ -156,7 +222,6 @@ void loop()
 
 void printResponse(uint8_t *response, uint8_t responseLength)
 {
-
 	String respBuffer;
 
 	for (int i = 0; i < responseLength; i++)
