@@ -33,6 +33,7 @@ TaskHandle_t displayTaskHandle;
 
 char mqtt_waterniveau = 0;
 
+// Callback function on message receive
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
 	Serial.print("Message arrived [");
 	Serial.print(topic);
@@ -45,6 +46,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 	mqtt_waterniveau = (char)payload[0];
 }
 
+// Core 2 Main loop
 void mqttTaskLoop(void* parameter) {
 	Serial.print("MQTT running on core ");
 	Serial.println(xPortGetCoreID());
@@ -64,24 +66,7 @@ void mqttTaskLoop(void* parameter) {
 	}
 }
 
-void displayTask(void* parameter) {
-	Serial.print("Display running on core ");
-	Serial.println(xPortGetCoreID());
-
-	while(1) {
-		M5.Lcd.fillScreen(BLACK);
-
-		M5.Lcd.setCursor(10, 10);
-		M5.Lcd.setTextColor(WHITE);
-		M5.Lcd.setTextSize(1);
-
-		M5.Lcd.print("Waterniveau: ");
-		M5.Lcd.println(mqtt_waterniveau);
-
-		delay(20);
-	}
-}
-
+// Establish connection and initialize NFC
 void setup()
 {
 	M5.begin();
@@ -123,13 +108,12 @@ void setup()
 	nfc.SAMConfig();
 
 	xTaskCreate(mqttTaskLoop, "MQTT", 10000, NULL, 0, &mqttTaskHandle);
-	xTaskCreate(displayTask, "Display", 10000, NULL, 0, &displayTaskHandle);
 }
 
+// Main Lock NFC loop
 void loop()
 {
 	bool success;
-
 	uint8_t responseLength = 32;
 
 	Serial.println("Waiting for an ISO14443A card");
@@ -139,7 +123,6 @@ void loop()
 
 	if (success)
 	{
-
 		Serial.println("Found something!");
 
 		uint8_t selectApdu[] = {0x00,									  /* CLA */
@@ -188,7 +171,7 @@ void loop()
 
 					Serial.println(response);
 					if(response == challenge + key) {
-						Serial.println("	Authenticated!");
+						Serial.println("Authenticated!");
 
 						uint8_t apdu[] = {0x90, 0x01};
 						uint8_t final_back[2];
@@ -196,7 +179,7 @@ void loop()
 
 						success = nfc.inDataExchange(apdu, sizeof(apdu), final_back, &final_length);
 						if(success) {
-							delay(2000);
+							delay(5000);
 						}
 					}
 				}
@@ -235,29 +218,4 @@ void printResponse(uint8_t *response, uint8_t responseLength)
 
 	Serial.print("response: ");
 	Serial.println(respBuffer);
-}
-
-void setupNFC()
-{
-
-	nfc.begin();
-
-	uint32_t versiondata = nfc.getFirmwareVersion();
-	if (!versiondata)
-	{
-		Serial.print("Didn't find PN53x board");
-		while (1)
-			; // halt
-	}
-
-	// Got ok data, print it out!
-	Serial.print("Found chip PN5");
-	Serial.println((versiondata >> 24) & 0xFF, HEX);
-	Serial.print("Firmware ver. ");
-	Serial.print((versiondata >> 16) & 0xFF, DEC);
-	Serial.print('.');
-	Serial.println((versiondata >> 8) & 0xFF, DEC);
-
-	// configure board to read RFID tags
-	nfc.SAMConfig();
 }
