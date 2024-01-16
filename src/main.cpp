@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ESP32Servo.h>
 
 #if 1
 #include <SPI.h>
@@ -30,6 +31,10 @@ PubSubClient mqttClient(espClient);
 
 TaskHandle_t mqttTaskHandle;
 TaskHandle_t displayTaskHandle;
+
+Servo servo_lock;
+const int servo_locked_pos = 120;
+const int servo_open_pos = 25;
 
 char mqtt_waterniveau = 0;
 
@@ -107,6 +112,13 @@ void setup()
 
 	nfc.SAMConfig();
 
+	ESP32PWM::allocateTimer(0);
+	ESP32PWM::allocateTimer(1);
+	ESP32PWM::allocateTimer(2);
+	ESP32PWM::allocateTimer(3);
+	servo_lock.setPeriodHertz(50);    // standard 50 hz servo
+	servo_lock.attach(21, 500, 2400); // attaches the servo on pin 18 to the servo object
+
 	xTaskCreate(mqttTaskLoop, "MQTT", 10000, NULL, 0, &mqttTaskHandle);
 }
 
@@ -115,6 +127,12 @@ void loop()
 {
 	bool success;
 	uint8_t responseLength = 32;
+
+	while(mqtt_waterniveau > 0) {
+		servo_lock.write(servo_open_pos);
+		delay(100);
+	}
+	servo_lock.write(servo_locked_pos);
 
 	Serial.println("Waiting for an ISO14443A card");
 
@@ -178,9 +196,10 @@ void loop()
 						uint8_t final_length = 2;
 
 						success = nfc.inDataExchange(apdu, sizeof(apdu), final_back, &final_length);
-						if(success) {
-							delay(5000);
-						}
+
+						servo_lock.write(servo_open_pos);
+						delay(5000);
+						servo_lock.write(servo_locked_pos);
 					}
 				}
 				else
