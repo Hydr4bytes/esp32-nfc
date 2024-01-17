@@ -43,12 +43,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 	Serial.print("Message arrived [");
 	Serial.print(topic);
 	Serial.print("] ");
+
+	String string_data = String();
+
 	for (int i = 0; i < length; i++) {
 		Serial.print((char)payload[i]);
+		string_data += (char)payload[i];
 	}
 	Serial.println();
 
-	mqtt_waterniveau = (char)payload[0];
+	mqtt_waterniveau = string_data.toInt();
+	if(mqtt_waterniveau > 0) {
+		servo_lock.write(servo_open_pos);
+	} else {
+		servo_lock.write(servo_locked_pos);
+	}
 }
 
 // Core 2 Main loop
@@ -67,6 +76,7 @@ void mqttTaskLoop(void* parameter) {
 				mqttClient.subscribe("onni/waterniveau");
 			}
 		}
+
 		mqttClient.loop();
 	}
 }
@@ -135,7 +145,6 @@ void loop()
 	servo_lock.write(servo_locked_pos);
 
 	Serial.println("Waiting for an ISO14443A card");
-
 	// set shield to inListPassiveTarget
 	success = nfc.inListPassiveTarget();
 
@@ -218,8 +227,6 @@ void loop()
 
 		Serial.println("Didn't find anything!");
 	}
-
-	delay(1000);
 }
 
 void printResponse(uint8_t *response, uint8_t responseLength)
